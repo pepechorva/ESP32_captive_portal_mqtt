@@ -17,20 +17,21 @@
 
 #define CLEARCREDENTIALS 0 //0 for WiFi data persistance, set 1 to force clear (for debug purposes)
 
-struct MQTT_settings_default
+struct MQTT_settings
 {
-	char mqtt_server[40]= "192.168.1.2";
-	char mqtt_port[6]	= "1883";
-	char api_token[34]	= "YOUR_APITOKEN";
-} mqtt_settings_default;
+	char mqtt_server[16] = 	"192.168.1.2";
+	char mqtt_port[6] 	 = 	"1883";
+	char api_token[14] 	 = 	"YOUR_APITOKEN";		//Increase api token size if necessary
+	char mqtt_topic[20] = 	"Topic";
+} mqtt_settings;
 
 //default custom static IP
-struct IP_settings_default
+struct IP_settings
 {
 	char static_ip[16] = "192.168.1.3";
 	char static_gw[16] = "192.168.1.1";
 	char static_sn[16] = "255.255.255.0";
-} ip_settings_default;
+} ip_settings;
 
 //Credentials for Captive portal
 struct AP_default
@@ -75,7 +76,10 @@ void InitSPIFFS()
 	//read configuration from FS json
 	
 	//clean FS, for testing
-	//SPIFFS.format();
+	//if new entries in captive portal are made
+	//is recommended to clean FS
+	if(CLEARCREDENTIALS)
+		SPIFFS.format();
 
 	Serial.println("mounting FS...");
 
@@ -110,58 +114,62 @@ void InitSPIFFS()
 				Serial.println("failed to load json config");
 			else
 			{
-				Serial.println("\nparsed json");
+				if(json["mqtt_server"])	strcpy(mqtt_settings.mqtt_server, 	json["mqtt_server"]);
+				if(json["mqtt_port"])	strcpy(mqtt_settings.mqtt_port, 	json["mqtt_port"]);
+				if(json["api_token"])	strcpy(mqtt_settings.api_token, 	json["api_token"]);
+				if(json["mqtt_topic"])	strcpy(mqtt_settings.mqtt_topic, 	json["mqtt_topic"]);
 
-				strcpy(mqtt_settings_default.mqtt_server, 	json["mqtt_server"]);
-				strcpy(mqtt_settings_default.mqtt_port, 	json["mqtt_port"]);
-				strcpy(mqtt_settings_default.api_token, 	json["api_token"]);
 
 				if (!json["ip"]) 
 					Serial.println("no custom ip in config");
 				else
 				{
 					Serial.println("setting custom ip from config");
-					strcpy(ip_settings_default.static_ip, json["ip"]);
-					strcpy(ip_settings_default.static_gw, json["gateway"]);
-					strcpy(ip_settings_default.static_sn, json["subnet"]);
-					Serial.println(ip_settings_default.static_ip);
+					strcpy(ip_settings.static_ip, json["ip"]);
+					strcpy(ip_settings.static_gw, json["gateway"]);
+					strcpy(ip_settings.static_sn, json["subnet"]);
+					Serial.println(ip_settings.static_ip);
 				}
+
+				Serial.println("\nparsed json");
 			} 
 		}
 	}
 	//end read
-	Serial.println(ip_settings_default.static_ip);
-	Serial.println(mqtt_settings_default.api_token);
-	Serial.println(mqtt_settings_default.mqtt_server);
+	Serial.println(ip_settings.static_ip);
+	Serial.println(mqtt_settings.api_token);
+	Serial.println(mqtt_settings.mqtt_server);
+	Serial.println(mqtt_settings.mqtt_topic);
 }
 
 void InitWiFi()
 {
 	/*
 	*	Reset saved settings USE ONLY FOR DEBUGGING
-	* 	TO-DO
+	*	TO-DO
 	*	- create a button pin function to do it by hardware 
 	*	or let 2 contact pins to do ir with a removable wire
 	*/
 
 	if(CLEARCREDENTIALS)
-	    wifiManager.resetSettings();  
+		wifiManager.resetSettings();  
 
 	// The extra parameters to be configured (can be either global or just in the setup)
 	// After connecting, parameter.getValue() will get you the configured value
 	// id/name placeholder/prompt default length
-	WiFiManagerParameter custom_mqtt_server("server", 	"mqtt server", 	mqtt_settings_default.mqtt_server, 	40);
-	WiFiManagerParameter custom_mqtt_port(	"port", 	"mqtt port", 	mqtt_settings_default.mqtt_port, 	5);
-	WiFiManagerParameter custom_api_token(	"apikey", 	"API token", 	mqtt_settings_default.api_token, 	34);
+	WiFiManagerParameter custom_mqtt_server(	"server", 	"mqtt server", 			mqtt_settings.mqtt_server, 	40);
+	WiFiManagerParameter custom_mqtt_port(		"port", 	"mqtt port", 			mqtt_settings.mqtt_port, 	5);
+	WiFiManagerParameter custom_api_token(		"apikey", 	"API token", 			mqtt_settings.api_token, 	34);
+	WiFiManagerParameter custom_mqtt_topic(		"topic", 	"Subscribe to topic", 	mqtt_settings.mqtt_topic, 	34);
 
 	//set config save notify callback
 	wifiManager.setSaveConfigCallback(saveConfigCallback);
 
 	//set static ip
 	IPAddress _ip, _gw, _sn;
-	_ip.fromString(ip_settings_default.static_ip);
-	_gw.fromString(ip_settings_default.static_gw);
-	_sn.fromString(ip_settings_default.static_sn);
+	_ip.fromString(ip_settings.static_ip);
+	_gw.fromString(ip_settings.static_gw);
+	_sn.fromString(ip_settings.static_sn);
 
 	wifiManager.setSTAStaticIPConfig(_ip, _gw, _sn);
 
@@ -169,8 +177,10 @@ void InitWiFi()
 	wifiManager.addParameter(&custom_mqtt_server);
 	wifiManager.addParameter(&custom_mqtt_port);
 	wifiManager.addParameter(&custom_api_token);
+	wifiManager.addParameter(&custom_mqtt_topic);
+	
 
-	//set minimu quality of signal so it ignores AP's under that quality
+	//set minimum quality of signal so it ignores AP's under that quality
 	//defaults to 8%
 	wifiManager.setMinimumSignalQuality();
 
@@ -186,9 +196,10 @@ void InitWiFi()
 	}
 
 	//read updated parameters
-	strcpy(mqtt_settings_default.mqtt_server, 	custom_mqtt_server.getValue());
-	strcpy(mqtt_settings_default.mqtt_port, 	custom_mqtt_port.getValue());
-	strcpy(mqtt_settings_default.api_token, 	custom_api_token.getValue());
+	strcpy(mqtt_settings.mqtt_server, 	custom_mqtt_server.getValue());
+	strcpy(mqtt_settings.mqtt_port, 	custom_mqtt_port.getValue());
+	strcpy(mqtt_settings.api_token, 	custom_api_token.getValue());
+	strcpy(mqtt_settings.mqtt_topic, 	custom_mqtt_topic.getValue());
 
 	//if you get here you have connected to the WiFi
 	Serial.println("connected...yeey :)");
@@ -201,16 +212,17 @@ void SaveParamsToFS()
 		Serial.println("saving config");
 		JsonDocument json;
 
-		json["mqtt_server"] = 	mqtt_settings_default.mqtt_server;
-		json["mqtt_port"] = 	mqtt_settings_default.mqtt_port;
-		json["api_token"] = 	mqtt_settings_default.api_token;
+		json["mqtt_server"] = 	mqtt_settings.mqtt_server;
+		json["mqtt_port"] 	= 	mqtt_settings.mqtt_port;
+		json["api_token"] 	= 	mqtt_settings.api_token;
+		json["mqtt_topic"]	= 	mqtt_settings.mqtt_topic;
 
-		json["ip"] = 		WiFi.localIP().toString();
+		json["ip"] 		= 	WiFi.localIP().toString();
 		json["gateway"] = 	WiFi.gatewayIP().toString();
-		json["subnet"] = 	WiFi.subnetMask().toString();
+		json["subnet"] 	= 	WiFi.subnetMask().toString();
 
 		File configFile = SPIFFS.open("/config.json", "w");
-		if (!configFile) 
+		if (!configFile)
 			Serial.println("failed to open config file for writing");
 
 		serializeJson(json, Serial);
@@ -249,57 +261,60 @@ void initializePins()
 void turnLeds(int isOn) 
 {
 	//testing function
-    digitalWrite(led1, isOn);
-    digitalWrite(led2, isOn);
-    digitalWrite(led3, isOn);
-    digitalWrite(led4, isOn);
-    digitalWrite(led5, isOn);
-    digitalWrite(led6, isOn);
-    digitalWrite(led7, isOn);
-    digitalWrite(led8, isOn);
+	digitalWrite(led1, isOn);
+	digitalWrite(led2, isOn);
+	digitalWrite(led3, isOn);
+	digitalWrite(led4, isOn);
+	digitalWrite(led5, isOn);
+	digitalWrite(led6, isOn);
+	digitalWrite(led7, isOn);
+	digitalWrite(led8, isOn);
+
+	Serial.print("Button ");
+	Serial.println(isOn == HIGH ? "pressed" : "released");
 }
 
 //MQTT subscriptions
 void mqttCallback(char* topic, byte* payload, unsigned int length) 
 {
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("]: ");
-  for (int i = 0; i < length; i++) 
-    Serial.print((char)payload[i]);
-  Serial.println();
+	Serial.print("Message arrived [");
+	Serial.print(topic);
+	Serial.print("]: ");
+	for (int i = 0; i < length; i++) 
+		Serial.print((char)payload[i]);
+	Serial.println();
 
-  if ((char)payload[0] == '1')	// Switch on the LED if an 1 was received as first character
-    digitalWrite(led5, LOW);	// Turn the LED on (Note that LOW is the voltage level
-								// but actually the LED is on; this is because
-								// it is active low on the ESP-01)
-  else 
-    digitalWrite(led5, HIGH);	// Turn the LED off by making the voltage HIGH
-}
+	if ((char)payload[0] == '1')	// Switch on the LED if an 1 was received as first character
+		digitalWrite(led5, LOW);	// Turn the LED on (Note that LOW is the voltage level
+									// but actually the LED is on; this is because
+									// it is active low on the ESP-01)
+	else 
+		digitalWrite(led5, HIGH);	// Turn the LED off by making the voltage HIGH
+	}
 
-void mqttReconnect() {
-  // Loop until we're reconnected
-  while (!client.connected())
-  {
-    Serial.print("Attempting MQTT connection...");
-    String clientId = "ESP32Client-" + String(random(0xffff), HEX);    // Create a random client ID
-    if (client.connect(clientId.c_str()))                              // Attempt to connect
-    {
-      Serial.println("connected");
+void mqttReconnect() 
+{
+	// Loop until we're reconnected
+	while (!client.connected())
+	{
+		Serial.print("Attempting MQTT connection...");
+		String clientId = "ESP32Client-" + String(random(0xffff), HEX);	// Create a random client ID
+		if (client.connect(clientId.c_str()))							// Attempt to connect
+		{
+			Serial.println("connected");
 
-      client.publish("outTopic", "hello world");                       // Once connected, publish an announcement...
-      client.subscribe("inTopic");                                     // ... and resubscribe
-      client.subscribe("lalala");                                      // ... and resubscribe
-    } 
-    else 
-    {
-      Serial.print("failed, rc=");
-      Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");                        // Wait 5 seconds before retrying
+			client.publish("outTopic", "hello world");		// Once connected, publish an announcement...
+			client.subscribe(mqtt_settings.mqtt_topic);		// ... and resubscribe to topic from setup
+		} 
+		else 
+		{
+			Serial.print("failed, rc=");
+			Serial.print(client.state());
+			Serial.println(" try again in 5 seconds");		// Wait 5 seconds before retrying
 
-      delay(5000);
-    }
-  }
+			delay(5000);
+		}
+	}
 }
 
 
@@ -314,7 +329,8 @@ void setup()
 	InitSPIFFS();
 	InitWiFi();
 	SaveParamsToFS();
-	client.setServer(mqtt_settings_default.mqtt_server, atoi(mqtt_settings_default.mqtt_port));
+
+	client.setServer(mqtt_settings.mqtt_server, atoi(mqtt_settings.mqtt_port));
 	client.setCallback(mqttCallback);
 
 	Serial.println("local ip");
@@ -337,16 +353,10 @@ void loop()
 	
 		buttonState = digitalRead(buttonPin);
 		if (buttonState == HIGH && previousButtonState == LOW) //Raising edge detection
-		{
 			turnLeds(HIGH);
-			Serial.println("Button pushed");
-		} 
 	
 		if(buttonState == LOW && previousButtonState == HIGH) //Falling edge detection
-		{
 			turnLeds(LOW);
-			Serial.println("Button released");
-		}
 	
 		previousButtonState = buttonState;
 
