@@ -22,7 +22,7 @@ struct MQTT_settings
 	char mqtt_server[16] = 	"192.168.1.2";
 	char mqtt_port[6] 	 = 	"1883";
 	char api_token[14] 	 = 	"YOUR_APITOKEN";		//Increase api token size if necessary
-	char mqtt_topic[20] = 	"Topic";
+	char mqtt_topic[50] = 	"Topic";
 } mqtt_settings;
 
 //default custom static IP
@@ -60,10 +60,7 @@ const int led7 = 32;
 const int led8 = 33;
 
 const int buttonPin = 22;
-
-int buttonState = 0;
-int previousButtonState = 0;
-
+const int resetSettingsPin = 15;
 
 //callback notifying us of the need to save config
 void saveConfigCallback () {
@@ -144,13 +141,7 @@ void InitSPIFFS()
 
 void InitWiFi()
 {
-	/*
-	*	Reset saved settings USE ONLY FOR DEBUGGING
-	*	TO-DO
-	*	- create a button pin function to do it by hardware 
-	*	or let 2 contact pins to do ir with a removable wire
-	*/
-
+	// Reset saved settings USE ONLY FOR DEBUGGING
 	if(CLEARCREDENTIALS)
 		wifiManager.resetSettings();  
 
@@ -232,13 +223,24 @@ void SaveParamsToFS()
 	}
 }
 
+// Reset captive portal settings to default 
+// There is enabled a GPIO (resetSettingsPin) which SOULD be connected to GND with a resistor
+// to avoid noisy and catastrophic lectures 
+int resetSettings(int lastButtonState)
+{
+	int buttonState = digitalRead(resetSettingsPin);
+	if(buttonState == LOW && lastButtonState == HIGH) //Falling edge detection
+	{
+			wifiManager.resetSettings();  
+			ESP.restart();
+	}
+
+	return (buttonState);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
-/*
-Behavioral functions for your ESP 
-*/
+// Behavioral functions for your ESP 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 
 //set GPIO modes of your board
@@ -318,8 +320,25 @@ void mqttReconnect()
 }
 
 
+
+int checkButton(int lastButtonState)
+{
+	int buttonState = digitalRead(buttonPin);
+	if (buttonState == HIGH && lastButtonState == LOW) //Raising edge detection
+		turnLeds(HIGH);
+	
+	if(buttonState == LOW && lastButtonState == HIGH) //Falling edge detection
+		turnLeds(LOW);
+	
+	return (buttonState);
+}
+
 void setup() 
 {
+	// This GPIO will reset captive portal settings
+	// Ensure it is connected to GND
+	pinMode(resetSettingsPin, INPUT);
+
 	// put your setup code here, to run once:
 	Serial.begin(115200);
 	Serial.println();
@@ -347,18 +366,15 @@ void loop()
 	char msg[msgBufferSize];
 	int value = 0;
 
+	int previousButtonState = 0;
+	int resetSettingsButtonLastState = 0;
+
 	for(;;)
 	{
+		resetSettingsButtonLastState = resetSettings(resetSettingsButtonLastState);
 		client.setSocketTimeout(1);
 	
-		buttonState = digitalRead(buttonPin);
-		if (buttonState == HIGH && previousButtonState == LOW) //Raising edge detection
-			turnLeds(HIGH);
-	
-		if(buttonState == LOW && previousButtonState == HIGH) //Falling edge detection
-			turnLeds(LOW);
-	
-		previousButtonState = buttonState;
+		previousButtonState = checkButton(previousButtonState);
 
 		//mqtt
 		if (!client.connected()) 
