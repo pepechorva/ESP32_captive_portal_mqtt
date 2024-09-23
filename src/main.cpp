@@ -393,6 +393,7 @@ void loop()
 			Serial.println(msg);
 			client.publish("outTopic", msg);
 		}
+		if(serialEventRun) serialEventRun();
 	}
 
 	//This code should never be executed, but if infinite loop raises end... xD
