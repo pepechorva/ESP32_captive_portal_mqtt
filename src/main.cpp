@@ -337,7 +337,7 @@ void setup()
 {
 	// This GPIO will reset captive portal settings
 	// Ensure it is connected to GND
-	pinMode(resetSettingsPin, INPUT);
+	pinMode(resetSettingsPin, INPUT_PULLDOWN);
 
 	// put your setup code here, to run once:
 	Serial.begin(115200);
